@@ -1,0 +1,467 @@
+<!DOCTYPE html>
+<html lang="ms-MY">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>Kemahiran Pemulihan: Menyusun Nombor 1–100 (Pembelajaran)</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { box-sizing: border-box; }
+    .activity-card { min-height: 400px; }
+    .number-card { transition: all .3s ease; cursor: pointer; }
+    .number-card:hover { transform: scale(1.05); }
+    .dragging { opacity: .5; transform: rotate(5deg); }
+
+    /* Drop zone */
+    .drop-zone {
+      border: 2px dashed #cbd5e1;
+      transition: all .3s ease;
+      min-width: 60px;
+      min-height: 60px;
+      display: inline-block;
+      vertical-align: middle;
+    }
+    .drop-zone.drag-over { border-color: #3b82f6; background-color: #eff6ff; }
+
+    /* Salah */
+    @keyframes shake {
+      0% { transform: translateX(0); }
+      25% { transform: translateX(-5px); }
+      50% { transform: translateX(5px); }
+      75% { transform: translateX(-5px); }
+      100% { transform: translateX(0); }
+    }
+    .shake { animation: shake 0.5s ease; }
+
+    /* Zon sudah diisi */
+    .drop-zone-filled {
+      border-style: solid;
+      border-color: #4ade80;
+      background-color: #f0fdf4;
+    }
+
+    /* Aktiviti 3 – gaya kecil */
+    .token-on { outline: 3px solid #A78BFA; }
+    .token-bad { outline: 3px solid #F87171; }
+    .result-good { background: #dcfce7; outline: 3px solid #22c55e; }
+  </style>
+</head>
+<body class="bg-gradient-to-br from-blue-50 to-purple-50 min-h-full">
+
+  <!-- Info bar -->
+  <div class="bg-yellow-100 border-b-4 border-yellow-300 p-4 shadow-sm sticky top-0 z-10">
+    <div class="max-w-6xl mx-auto flex items-center justify-between">
+      <div class="flex items-center gap-3">
+        <span class="text-2xl">📚</span>
+        <span id="info-text" class="text-lg font-semibold text-gray-800">
+          Pilih aktiviti untuk mula belajar nombor!
+        </span>
+      </div>
+      <button id="speak-btn"
+              class="bg-yellow-300 hover:bg-yellow-400 text-yellow-800 font-bold py-2 px-4 rounded-full text-xl transition-colors duration-200"
+              onclick="speakInfo()">
+        🔊
+      </button>
+    </div>
+  </div>
+
+  <div class="max-w-6xl mx-auto p-6">
+    <!-- Activity card -->
+    <div class="bg-white rounded-xl shadow-lg p-6 mb-6 activity-card flex items-center justify-center">
+      <div id="activity-content" class="text-center w-full">
+        <div class="py-16">
+          <div class="text-6xl mb-4">🔢</div>
+          <h2 class="text-3xl font-bold text-gray-800 mb-4">
+            Kemahiran Pemulihan: Menyusun Nombor 1–100
+          </h2>
+          <p class="text-xl text-gray-600 mb-8">
+            Pilih aktiviti di bawah untuk meneroka susunan nombor secara santai.
+          </p>
+          <div class="text-4xl">👇</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Activity picker -->
+    <div class="bg-white rounded-xl shadow-lg p-6">
+      <h3 class="text-2xl font-bold text-gray-800 mb-4 text-center">Pilih Aktiviti</h3>
+      <div class="grid grid-cols-1 md:grid-cols-3 lg:grid-cols-5 gap-4 mb-6">
+        <button onclick="loadActivity(1)"
+                class="bg-blue-500 hover:bg-blue-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition-colors duration-200">
+          🎯 Klik Nombor
+        </button>
+        <button onclick="loadActivity(2)"
+                class="bg-green-500 hover:bg-green-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition-colors duration-200">
+          🚂 Gerabak Keretapi
+        </button>
+        <button onclick="loadActivity(3)"
+                class="bg-purple-500 hover:bg-purple-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition-colors duration-200">
+          🎪 Bina Sebutan
+        </button>
+        <button onclick="loadActivity(4)"
+                class="bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition-colors duration-200">
+          👚 Sidai Baju (Naik)
+        </button>
+        <button onclick="loadActivity(5)"
+                class="bg-red-500 hover:bg-red-600 text-white font-bold py-3 px-4 rounded-lg text-lg transition-colors duration-200">
+          👚 Sidai Baju (Turun)
+        </button>
+      </div>
+
+      <div class="flex justify-center gap-4">
+        <button onclick="clearActivity()" class="bg-gray-500 hover:bg-gray-600 text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors duration-200">
+          🧹 Bersih
+        </button>
+        <button onclick="nextActivity()" class="bg-indigo-500 hover:bg-indigo-600 text-white font-bold py-2 px-6 rounded-lg text-lg transition-colors duration-200">
+          ➡️ Seterusnya
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let currentActivity = 0;
+    let ttsEnabled = false;
+    let currentInfo = "Pilih aktiviti untuk mula belajar nombor!";
+    let draggedElement = null;
+
+    // State Sidai Baju
+    window.clotheslineGame = { sequence: [], nextCorrect: null, type: 'asc' };
+
+    /* ====== TTS ====== */
+    function speak(text) {
+      if (!ttsEnabled) return;
+      if (!('speechSynthesis' in window)) return;
+      window.speechSynthesis.cancel();
+      setTimeout(() => {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = 'ms-MY';
+        u.rate = 0.9; u.pitch = 1.05;
+        const voices = window.speechSynthesis.getVoices();
+        const ms = voices.find(v => v.lang === 'ms-MY' || v.lang?.startsWith('ms'));
+        if (ms) u.voice = ms;
+        window.speechSynthesis.speak(u);
+      }, 100);
+    }
+    function setInfo(text) { currentInfo = text; document.getElementById('info-text').textContent = text; }
+    function speakInfo() {
+      if (!ttsEnabled) {
+        ttsEnabled = true;
+        const btn = document.getElementById('speak-btn');
+        btn.classList.add('bg-green-300', 'hover:bg-green-400');
+        btn.classList.remove('bg-yellow-300', 'hover:bg-yellow-400');
+      }
+      speak(currentInfo);
+    }
+
+    /* ====== DnD helpers ====== */
+    function dragStart(e) { draggedElement = e.target; e.target.classList.add('dragging'); }
+    function dragEnd(e) { e.target.classList.remove('dragging'); document.querySelectorAll('.drop-zone').forEach(z=>z.classList.remove('drag-over')); }
+    function allowDrop(e) { e.preventDefault(); if (e.currentTarget.classList.contains('drop-zone')) e.currentTarget.classList.add('drag-over'); }
+    function dragLeave(e) { if (e.currentTarget.classList.contains('drop-zone')) e.currentTarget.classList.remove('drag-over'); }
+
+    /* ====== Router ====== */
+    function loadActivity(n) {
+      currentActivity = n;
+      const content = document.getElementById('activity-content');
+      if (n === 1) return loadClickNumberActivity(content);
+      if (n === 2) return loadTrainActivity(content);
+      if (n === 3) return loadPairingActivity(content);   // Bina Sebutan (mod belajar)
+      if (n === 4) return loadClotheslineActivity(content, 'asc');
+      if (n === 5) return loadClotheslineActivity(content, 'desc');
+    }
+
+    /* ====== Aktiviti 1: Klik Nombor ====== */
+    function loadClickNumberActivity(content) {
+      setInfo("Klik mana-mana nombor untuk mendengar sebutan dan penerangan ringkas.");
+      const numbers = [15, 23, 47, 56, 78, 89];
+      content.innerHTML = `
+        <h3 class="text-2xl font-bold text-blue-600 mb-6">🎯 Klik Nombor untuk Belajar</h3>
+        <div class="grid grid-cols-2 md:grid-cols-3 gap-4">
+          ${numbers.map(num => `
+            <div class="number-card bg-blue-100 hover:bg-blue-200 border-2 border-blue-300 rounded-xl p-6 text-center"
+                 onclick="clickNumber(${num})">
+              <div class="text-4xl font-bold text-blue-800">${num}</div>
+            </div>
+          `).join('')}
+        </div>
+        <div id="number-info" class="mt-6 p-4 bg-blue-50 rounded-lg text-center text-lg font-semibold text-blue-800 min-h-16">
+          Sentuh nombor untuk meneroka.
+        </div>
+      `;
+    }
+    function clickNumber(num) {
+      const info = document.getElementById('number-info');
+      const words = {15:"lima belas",23:"dua puluh tiga",47:"empat puluh tujuh",56:"lima puluh enam",78:"tujuh puluh lapan",89:"lapan puluh sembilan"};
+      const msg = `Nombor ${num}. Sebutan: ${words[num]}.`;
+      info.innerHTML = msg; setInfo(msg); speak(msg);
+    }
+
+    /* ====== Aktiviti 2: Keretapi ====== */
+    function loadTrainActivity(content) {
+      setInfo("Seret nombor yang betul ke gerabak yang kosong ( __ ).");
+      const numbers = [47, 49, 46];
+      content.innerHTML = `
+        <h3 class="text-2xl font-bold text-green-600 mb-6">🚂 Lengkapkan Gerabak Keretapi</h3>
+        <div class="mb-8">
+          <h4 class="text-lg font-semibold mb-3">Pilih nombor ini:</h4>
+          <div id="number-choices" class="flex flex-wrap justify-center gap-4">
+            ${numbers.sort(()=>Math.random()-0.5).map(num => `
+              <div class="number-card bg-green-100 border-2 border-green-300 rounded-lg p-4 text-2xl font-bold text-green-800 cursor-move"
+                   draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-number="${num}">
+                ${num}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+        <div>
+          <h4 class="text-lg font-semibold mb-3">Letakkan di sini:</h4>
+          <div id="train-line" class="flex flex-wrap items-center justify-center gap-2">
+            <span class="text-5xl">🚂</span>
+            <div class="number-card bg-gray-200 rounded-lg p-5 text-2xl font-bold">45</div>
+            <span class="text-2xl font-bold">➡️</span>
+            <div class="drop-zone rounded-lg p-5 text-2xl font-bold" ondrop="dropOnTrain(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" data-correct="46">__</div>
+            <span class="text-2xl font-bold">➡️</span>
+            <div class="drop-zone rounded-lg p-5 text-2xl font-bold" ondrop="dropOnTrain(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" data-correct="47">__</div>
+            <span class="text-2xl font-bold">➡️</span>
+            <div class="number-card bg-gray-200 rounded-lg p-5 text-2xl font-bold">48</div>
+            <span class="text-2xl font-bold">➡️</span>
+            <div class="drop-zone rounded-lg p-5 text-2xl font-bold" ondrop="dropOnTrain(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)" data-correct="49">__</div>
+          </div>
+        </div>
+      `;
+    }
+    function dropOnTrain(e) {
+      e.preventDefault();
+      e.currentTarget.classList.remove('drag-over');
+      if (!draggedElement) return;
+      const draggedNumber = draggedElement.dataset.number;
+      const correctNumber = e.currentTarget.dataset.correct;
+      if (draggedNumber === correctNumber) {
+        e.currentTarget.innerHTML = draggedNumber;
+        e.currentTarget.classList.add('drop-zone-filled');
+        e.currentTarget.classList.remove('drop-zone');
+        e.currentTarget.removeAttribute('ondrop');
+        draggedElement.remove(); draggedElement = null;
+        const msg = `Betul! Gerabak ${draggedNumber} disambung.`; setInfo(msg); speak(msg);
+        if (document.querySelectorAll('#train-line .drop-zone').length === 0) { setInfo("Syabas! Keretapi lengkap!"); speak("Syabas! Keretapi lengkap!"); }
+      } else {
+        setInfo(`Bukan di situ. Cuba lagi.`); speak(`Bukan di situ. Cuba lagi.`);
+        e.currentTarget.classList.add('shake'); setTimeout(()=>e.currentTarget.classList.remove('shake'),500);
+      }
+    }
+
+    /* ====== Aktiviti 3: BINA SEBUTAN (Mod pembelajaran) ====== */
+    function loadPairingActivity(content) {
+      setInfo("Rujuk sebutan di sebelah nombor. Klik token untuk bina semula sebutan, kemudian tekan Semak jika mahu.");
+
+      const ONES = ["kosong","satu","dua","tiga","empat","lima","enam","tujuh","lapan","sembilan"];
+      function tokensFor(n){
+        if(n===100) return ["seratus"];
+        if(n===10)  return ["sepuluh"];
+        if(n===11)  return ["sebelas"];
+        if(n>11 && n<20) return [ONES[n-10], "belas"];
+        const p = Math.floor(n/10), s = n%10;
+        if(p===0) return [ONES[s]];
+        if(s===0) return [ONES[p], "puluh"];
+        return [ONES[p], "puluh", ONES[s]];
+      }
+      const niceJoin = arr => arr.join(" ");
+      const r = (min,max) => Math.floor(Math.random()*(max-min+1))+min;
+
+      let target = [0,100].includes(r(0,20)) ? (r(0,1)?0:100) : r(10,99);
+      const correctTokens = tokensFor(target);
+      const correctPhrase = niceJoin(correctTokens);
+
+      const pool = new Set(correctTokens);
+      const EXTRA = ["puluh","belas","seratus", ...ONES];
+      while(pool.size < Math.min(10, EXTRA.length)) pool.add(EXTRA[r(0,EXTRA.length-1)]);
+      const bank = [...pool].sort(()=>Math.random()-0.5);
+
+      content.innerHTML = `
+        <h3 class="text-2xl font-bold text-purple-600 mb-6">🎪 Bina Sebutan</h3>
+
+        <div class="bg-gray-50 rounded-2xl p-6 flex flex-col md:flex-row items-center justify-between gap-3 mb-6">
+          <div class="text-center md:text-left">
+            <div class="text-xs uppercase tracking-wide text-gray-500">NOMBOR</div>
+            <div class="text-6xl md:text-7xl font-black text-gray-900 leading-none">${target}</div>
+            <div class="text-xs text-gray-500">Puluh = 10 · Sa = 1</div>
+          </div>
+          <div class="w-px h-14 bg-gray-200 hidden md:block"></div>
+          <div class="text-center md:text-left">
+            <div class="text-xs uppercase tracking-wide text-gray-500">Sebutan (rujukan)</div>
+            <div class="text-xl md:text-2xl font-bold text-purple-700 flex items-center gap-3">
+              <span>${correctPhrase}</span>
+              <button class="rounded-full px-3 py-1 bg-purple-100 text-purple-700 font-semibold hover:bg-purple-200"
+                onclick="(function(){ if(window.speechSynthesis){ let u=new SpeechSynthesisUtterance('${correctPhrase}'); u.lang='ms-MY'; speechSynthesis.speak(u);} })()">
+                🔊 Sebut
+              </button>
+            </div>
+            <div class="text-sm text-gray-500 mt-1">Cuba bina semula sebutan yang sama menggunakan token.</div>
+          </div>
+        </div>
+
+        <div class="mb-4">
+          <div class="text-sm font-semibold text-gray-600 mb-1">Sebutan dibina:</div>
+          <div id="c-result" class="min-h-[3.2rem] flex flex-wrap gap-2 items-center bg-white rounded-xl border-2 border-gray-200 p-3"></div>
+        </div>
+
+        <div>
+          <div class="text-sm font-semibold text-gray-600 mb-1">Pilih perkataan:</div>
+          <div id="c-bank" class="flex flex-wrap gap-2">
+            ${bank.map(w=>`
+              <button class="number-card bg-purple-50 border-2 border-purple-200 px-4 py-2 text-lg font-semibold text-purple-800 rounded-xl" data-token="${w}">${w}</button>
+            `).join('')}
+          </div>
+        </div>
+
+        <div class="mt-6 flex flex-wrap gap-3 justify-center">
+          <button id="c-semakk" class="bg-indigo-600 hover:bg-indigo-700 text-white px-5 py-3 rounded-xl disabled:opacity-40" disabled>✅ Semak</button>
+          <button id="c-undo"  class="bg-gray-500 hover:bg-gray-600 text-white px-5 py-3 rounded-xl">↩️ Undur</button>
+          <button id="c-clear" class="bg-rose-500 hover:bg-rose-600 text-white px-5 py-3 rounded-xl">🧹 Padam</button>
+          <button id="c-new"   class="bg-emerald-600 hover:bg-emerald-700 text-white px-5 py-3 rounded-xl">🔄 Soalan Baharu</button>
+        </div>
+      `;
+
+      const bankEl   = document.getElementById('c-bank');
+      const resultEl = document.getElementById('c-result');
+      const btnSemak = document.getElementById('c-semakk');
+
+      let picked = [];
+      let history = [];
+
+      function render(){
+        resultEl.innerHTML = picked.map(w=>`<span class="px-3 py-1 rounded-xl bg-white border-2 border-gray-200">${w}</span>`).join('');
+        btnSemak.disabled = picked.length===0;
+      }
+
+      bankEl.querySelectorAll('button').forEach(btn=>{
+        btn.addEventListener('click', ()=>{
+          const w = btn.dataset.token;
+          picked.push(w);
+          history.push(btn);
+          btn.disabled = true;
+          btn.classList.add('opacity-60','token-on');
+          render();
+        });
+      });
+
+      btnSemak.addEventListener('click', ()=>{
+        const user = picked.join(" ");
+        resultEl.classList.remove('shake','result-good');
+        bankEl.querySelectorAll('button').forEach(b=>b.classList.remove('token-bad'));
+        if(user===correctPhrase){
+          resultEl.classList.add('result-good');
+          setInfo(`Bagus! ${target} disebut “${correctPhrase}”.`);
+        }else{
+          for(let i=0;i<picked.length;i++){
+            if(picked[i] !== (correctTokens[i] ?? "")){
+              const wrong = [...bankEl.querySelectorAll('button')].find(b=>b.dataset.token===picked[i]);
+              if(wrong) wrong.classList.add('token-bad');
+              break;
+            }
+          }
+          resultEl.classList.add('shake');
+          setInfo("Rujuk sebutan di atas dan susun semula mengikut urutan.");
+        }
+      });
+
+      document.getElementById('c-undo').addEventListener('click', ()=>{
+        const last = history.pop(); if(!last) return;
+        picked.pop(); last.disabled=false; last.classList.remove('opacity-60','token-on','token-bad'); render();
+      });
+      document.getElementById('c-clear').addEventListener('click', ()=>{
+        history.forEach(b=>{ b.disabled=false; b.classList.remove('opacity-60','token-on','token-bad'); });
+        picked=[]; history=[]; resultEl.classList.remove('result-good','shake'); render(); setInfo("Padam. Susun semula ikut sebutan rujukan.");
+      });
+      document.getElementById('c-new').addEventListener('click', ()=>loadPairingActivity(content));
+    }
+
+    /* ====== Aktiviti 4 & 5: Sidai Baju ====== */
+    function loadClotheslineActivity(content, type) {
+      let title, colorClass, numbers, infoMsg;
+      if (type === 'asc') {
+        title = "👚 Sidai Baju (Tertib Menaik)";
+        colorClass = "orange";
+        numbers = [12, 13, 14, 15, 16];
+        infoMsg = `Susun baju di ampaian mengikut tertib MENAIK. Mula dengan nombor ${numbers[0]}.`;
+        window.clotheslineGame = { sequence:[...numbers], nextCorrect:numbers[0], type:'asc' };
+      } else {
+        title = "👚 Sidai Baju (Tertib Menurun)";
+        colorClass = "red";
+        numbers = [30, 29, 28, 27, 26];
+        infoMsg = `Susun baju di ampaian mengikut tertib MENURUN. Mula dengan nombor ${numbers[0]}.`;
+        window.clotheslineGame = { sequence:[...numbers], nextCorrect:numbers[0], type:'desc' };
+      }
+      setInfo(infoMsg);
+      const shuffled = [...numbers].sort(()=>Math.random()-0.5);
+      content.innerHTML = `
+        <h3 class="text-2xl font-bold text-${colorClass}-600 mb-6">${title}</h3>
+        <div class="mb-8">
+          <h4 class="text-lg font-semibold mb-3">Ampaian (Letak di sini):</h4>
+          <div id="clothes-line" class="flex flex-wrap justify-center gap-3 min-h-32 p-4 drop-zone rounded-lg bg-gray-50"
+               ondrop="dropOnClothesline(event)" ondragover="allowDrop(event)" ondragleave="dragLeave(event)"></div>
+        </div>
+        <div>
+          <h4 class="text-lg font-semibold mb-3">Bakul Baju (Pilih dari sini):</h4>
+          <div id="clothes-basket" class="flex flex-wrap justify-center gap-4">
+            ${shuffled.map(num => `
+              <div class="number-card bg-${colorClass}-100 border-2 border-${colorClass}-300 rounded-lg p-4 text-2xl font-bold text-${colorClass}-800 cursor-move"
+                   draggable="true" ondragstart="dragStart(event)" ondragend="dragEnd(event)" data-number="${num}">
+                ${num}
+              </div>
+            `).join('')}
+          </div>
+        </div>
+      `;
+    }
+    function dropOnClothesline(e) {
+      e.preventDefault(); e.currentTarget.classList.remove('drag-over'); if (!draggedElement) return;
+      const draggedNumber = parseInt(draggedElement.dataset.number);
+      const { sequence, nextCorrect } = window.clotheslineGame;
+      if (draggedNumber === nextCorrect) {
+        e.currentTarget.appendChild(draggedElement);
+        draggedElement.setAttribute('draggable','false');
+        draggedElement.classList.remove('cursor-move');
+        draggedElement = null;
+        const idx = sequence.indexOf(nextCorrect), nextIdx = idx + 1;
+        if (nextIdx < sequence.length) {
+          const newNext = sequence[nextIdx]; window.clotheslineGame.nextCorrect = newNext;
+          const msg = `Betul! Sekarang cari nombor ${newNext}.`; setInfo(msg); speak(msg);
+        } else {
+          const msg = "Syabas! Anda berjaya menyusun semua baju!"; setInfo(msg); speak(msg);
+          window.clotheslineGame.nextCorrect = null;
+        }
+      } else {
+        const msg = `Oh! Itu bukan nombor yang betul. Cuba cari nombor ${nextCorrect}.`;
+        setInfo(msg); speak(msg); draggedElement.classList.add('shake');
+        setTimeout(()=>draggedElement.classList.remove('shake'),500);
+      }
+    }
+
+    /* ====== Kawalan Umum ====== */
+    function clearActivity() {
+      currentActivity = 0;
+      document.getElementById('activity-content').innerHTML = `
+        <div class="text-center py-16">
+          <div class="text-6xl mb-4">🔢</div>
+          <h2 class="text-3xl font-bold text-gray-800 mb-4">Kemahiran Pemulihan: Menyusun Nombor 1–100</h2>
+          <p class="text-xl text-gray-600 mb-8">Pilih aktiviti di bawah untuk meneroka susunan nombor secara santai.</p>
+          <div class="text-4xl">👇</div>
+        </div>
+      `;
+      setInfo("Pilih aktiviti untuk mula belajar nombor!");
+    }
+    function nextActivity() {
+      if (currentActivity === 0) return loadActivity(1);
+      if (currentActivity < 5) return loadActivity(currentActivity + 1);
+      return loadActivity(1);
+    }
+
+    // Kekalkan TTS resume pada sesetengah pelayar
+    if ('speechSynthesis' in window) {
+      setInterval(() => { if (window.speechSynthesis.paused) window.speechSynthesis.resume(); }, 1000);
+    }
+  </script>
+</body>
+</html>
